@@ -11,11 +11,11 @@ io.sockets.on('connection', function (socket) {
 
     //gameID: search among those who specify the same gameID
     //nickname: nickname
-    socket.on('c2s_request_matching', function (param) {
+    socket.on('c2s_request-matching', function (param) {
         console.log(param);
         let gameID = param.gameID;
         let nickname = param.nickname;
-        console.log('request_matching: ' + gameID + ' ' + nickname);
+        console.log('request-matching: ' + gameID + ' ' + nickname);
 
         if (gameID === undefined || nickname === undefined) {
             error(socket.id, 'please specify gameID and nickname');
@@ -27,17 +27,18 @@ io.sockets.on('connection', function (socket) {
             roomID = waiting.get(gameID);
             waiting.delete(gameID);
             console.log(roomInfos.get(roomID).players[0].nickname);
-            io.to(socket.id).emit('s2c_joined_room',
+            io.to(socket.id).emit('s2c_joined-room',
                 {
                     userList: roomInfos.get(roomID).players.map(player => player.nickname),
                     chatHistory: roomInfos.get(roomID).chatHistory
-                });//users' nicknames in the room (except oneself)
+                }
+            );//users' nicknames in the room (except oneself)
             //todo newcomer
         } else {
             roomID = nanoid();
             roomInfos.set(roomID, {players: [], stock: [], chatHistory: [], turn: 0, roomID: roomID});
             waiting.set(gameID, roomID);
-            io.to(socket.id).emit('s2c_created_room', {});
+            io.to(socket.id).emit('s2c_created-room', {});
         }
         socket.join(roomID);
         let player = {nickname: nickname, roomID: roomID, gameID: gameID, socketID: socket.id, hand: [], turn: 0};
@@ -93,17 +94,28 @@ io.sockets.on('connection', function (socket) {
                     return;
                 }
 
-                io.to(sid).emit('s2c_draw',
-                    {
+                if (operation === 'draw-expose') {
+                    io.to(sid).emit('s2c_draw-expose',
+                        {
+                            card: card
+                        }
+                    );
+                    broadcast(socket, 's2c_draw-expose', {
                         card: card,
-                        additionalInfo: param.additionalInfo
-                    }
-                );
-                broadcast(socket, 's2c_draw', {
-                    card: operation === 'draw-expose' ? card : undefined,
-                    additinalInfo: param.additionalInfo,
-                    next: param.next
-                });
+                        next: param.next,
+                        gameInfo: param.gameInfo
+                    });
+                } else {
+                    io.to(sid).emit('s2c_draw',
+                        {
+                            card: card
+                        }
+                    );
+                    broadcast(socket, 's2c_draw', {
+                        next: param.next,
+                        gameInfo: param.gameInfo
+                    });
+                }
                 break;
             case 'discard-expose':
                 card = param.card;
@@ -113,19 +125,26 @@ io.sockets.on('connection', function (socket) {
                 }
                 let turn = room.turn;
                 let player = room.players[turn];
+                //todo:一つだけ取り除く
                 let newhand = player.hand.filter(n => n !== card);
                 if (newhand.length === player.hand.length) {
                     error('you do not have the card');
                     return;
                 }
                 player.hand = newhand;
-                broadcast(socket, 's2c_discard', {
+                io.to(sid).emit(`s2c_discard-expose`, {});
+                broadcast(socket, 's2c_discard-expose', {
                     card: card,
-                    additionalInfo: additionalInfo,
-                    next: param.next
+                    next: param.next,
+                    gameInfo: param.gameInfo
                 });
                 break;
             case 'pass':
+                io.to(sid).emit(`s2c_pass`, {});
+                broadcast(socket, 's2c_pass', {
+                    next: param.next,
+                    gameInfo: param.gameInfl
+                });
                 break;
             default:
                 error(sid, 'unknown operation');
@@ -135,7 +154,7 @@ io.sockets.on('connection', function (socket) {
     });
 
     socket.on('c2s_report-violation', function (param) {
-        console.log('report-violation' +param);
+        console.log('report-violation' + param);
         broadcast(socket, 's2c_report-violation', {message: param.message});
     });
 
@@ -166,7 +185,7 @@ function initGame(roomID) {
     console.log('stock:' + room.stock);
     room.players.forEach(function (player, idx) {
         let socketID = player.socketID;
-        io.to(socketID).emit('s2c_game_start', {turn: idx});
+        io.to(socketID).emit('s2c_game-start', {turn: idx});
         player.turn = idx;
     });
 }
