@@ -70,6 +70,7 @@ io.sockets.on('connection', function (socket) {
         }
 
         let nickname = playerOf(socket).nickname;
+        io.to(socket.id).emit('s2c_chat', {});
         broadcast(socket, 's2c_chat', {from: nickname, message: message});
         room.chatHistory.push({from: nickname, message: message});
     });
