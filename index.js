@@ -16,7 +16,7 @@ io.sockets.on('connection', function (socket) {
         let nickname = param.nickname;
         console.log('request-matching: ' + gameID + ' ' + nickname);
         if (gameID === undefined || nickname === undefined) {
-            error(socket, 'please specify gameID and nickname');
+            error(socket, 'please specify the parameter gameID and nickname');
             return;
         }
 
@@ -29,11 +29,15 @@ io.sockets.on('connection', function (socket) {
             room = roomInfos.get(roomID);
             io.to(socket.id).emit('s2c_joined-room',
                 {
-                    userList: room.players.map(player => player.nickname),
+                    playerList: room.players.map(player => player.nickname),
                     chatHistory: room.chatHistory
                 }
-            );//users' nicknames in the room (except oneself)
-            //todo newcomer
+            );
+            io.to(roomID).emit('s2c_show-in',
+                {
+                    nickname: nickname
+                }
+            );//not broadcast, since this socket hasn't joined the room yet
         } else {
             roomID = nanoid();
             room = newRoom(roomID);
@@ -56,7 +60,7 @@ io.sockets.on('connection', function (socket) {
         console.log('chat' + param);
         let message = param.message;
         if (message === undefined) {
-            error(socket, 'please specify message');
+            error(socket, 'please specify the parameter message');
             return;
         }
         let room = roomOf(socket);
@@ -71,17 +75,26 @@ io.sockets.on('connection', function (socket) {
     });
 
     socket.on('c2s_play', function (param) {
+        //todo ゲームが開始していない場合エラー
         console.log('play' + JSON.stringify(param));
         if (roomOf(socket).turn !== playerOf(socket).turn) {
             error(socket, 'not your turn')
             return;
         }
         if (param.operation === undefined || param.next === undefined) {
-            error(socket, 'please specify operation and next');
+            error(socket, 'please specify the parameter operation and next');
+            return;
+        }
+        //todo 3人以上対戦に対応するとき要修正
+        if (!Number.isInteger(param.next) || param.next < 0 || param.next >= 2) {
+            error(socket, 'parameter next is invalid');
             return;
         }
 
         switch (operation) {
+            case 'add-cards-to-deck':
+                add_cards_to_deck(socket, param);
+                break;
             case 'draw':
                 draw(socket, param);
                 break;
@@ -124,11 +137,7 @@ function initGame(socket) {
     console.log('before shuffle:' + JSON.stringify(room.players));
     shuffle(room.players);
     console.log('after shuffle:' + JSON.stringify(room.players));
-    for (let i = 0; i < 52; i++) {
-        room.stock.push(i);
-    }
-    shuffle(room.stock);
-    console.log('stock:' + room.stock);
+
     room.players.forEach(function (player, idx) {
         let socketID = player.socketID;
         io.to(socketID).emit('s2c_game-start', {turn: idx});
@@ -150,14 +159,36 @@ function roomOf(socket) {
     return roomInfos.get(roomID);
 }
 
+function add_cards_to_deck(socket, param) {
+    let cards = param.cards;
+    if (cards === undefined) {
+        error(socket, 'please specify the parameter cards');
+        return;
+    }
+    if (!Array.isArray(cards)) {
+        error(socket, 'the parameter cards is not array');
+        return;
+    }
+    let room = roomOf(socket);
+    room.deck = room.deck.concat(cards);
+    shuffle(room.deck);
+
+    io.to(socket.id).emit('s2c_add-cards-to-deck', {});
+    broadcast(socket, 's2c_add-cards-to-deck', {
+        cards: cards,
+        next: param.next,
+        gameInfo: param.gameInfo
+    });
+}
+
 function draw(socket, param) {
-    let card = roomOf(socket).stock.shift();
+    let card = roomOf(socket).deck.shift();
     if (card === undefined) {
-        error(socket, 'there are no cards on the stock')
+        error(socket, 'there are no cards on the deck');
         return;
     }
 
-    io.to(sid).emit('s2c_draw',
+    io.to(socket.id).emit('s2c_draw',
         {
             card: card
         }
@@ -169,13 +200,13 @@ function draw(socket, param) {
 }
 
 function draw_expose(socket, param) {
-    let card = room.stock.shift();
+    let card = room.deck.shift();
     if (card === undefined) {
-        error(socket, 'there are no cards on the stock')
+        error(socket, 'there are no cards on the deck');
         return;
     }
 
-    io.to(sid).emit('s2c_draw-expose',
+    io.to(socket.id).emit('s2c_draw-expose',
         {
             card: card
         }
@@ -190,18 +221,18 @@ function draw_expose(socket, param) {
 function discard_expose(socket, param) {
     card = param.card;
     if (card === undefined) {
-        error(socket, 'please specify the card');
+        error(socket, 'please specify the parameter card');
         return;
     }
 
     let player = playerOf(socket);
-    //todo:一つだけ取り除く
-    let newhand = player.hand.filter(n => n !== card);
-    if (newhand.length === player.hand.length) {
+    let idx = player.hand.indexOf(card);
+    if (idx === -1) {
         error(socket, 'you do not have the card');
         return;
     }
-    player.hand = newhand;
+    player.hand.splice(idx, 1);
+
     io.to(socket.id).emit(`s2c_discard-expose`, {});
     broadcast(socket, 's2c_discard-expose', {
         card: card,
@@ -238,5 +269,5 @@ function newPlayer(nickname, roomID, gameID, socketID) {
 }
 
 function newRoom(roomID) {
-    return {players: [], stock: [], chatHistory: [], turn: 0, roomID: roomID};
+    return {players: [], deck: [], chatHistory: [], turn: 0, roomID: roomID};
 }
