@@ -57,7 +57,7 @@ io.sockets.on('connection', function (socket) {
     });
 
     socket.on('c2s_chat', function (param) {
-        console.log('chat' + param);
+        console.log('chat' + JSON.stringify(param));
         let message = param.message;
         if (message === undefined) {
             error(socket, 'please specify the parameter message');
@@ -70,7 +70,7 @@ io.sockets.on('connection', function (socket) {
         }
 
         let nickname = playerOf(socket).nickname;
-        io.to(socket.id).emit('s2c_chat', {});
+        //io.to(socket.id).emit('s2c_chat', {});
         broadcast(socket, 's2c_chat', {from: nickname, message: message});
         room.chatHistory.push({from: nickname, message: message});
     });
@@ -115,11 +115,6 @@ io.sockets.on('connection', function (socket) {
         room.turn = param.next;
     });
 
-    socket.on('c2s_report-violation', function (param) {
-        console.log('report-violation' + param);
-        broadcast(socket, 's2c_report-violation', {message: param.message});
-    });
-
     socket.on('disconnect', function () {
         let roomID = roomIDOf(socket);
         if (roomID === undefined) return;
@@ -135,9 +130,7 @@ io.sockets.on('connection', function (socket) {
 
 function initGame(socket) {
     let room = roomOf(socket);
-    console.log('before shuffle:' + JSON.stringify(room.players));
     shuffle(room.players);
-    console.log('after shuffle:' + JSON.stringify(room.players));
 
     room.players.forEach(function (player, idx) {
         let socketID = player.socketID;
@@ -151,12 +144,14 @@ function playerOf(socket) {
 }
 
 function roomIDOf(socket) {
-    if (player(socket) === undefined) return undefined;
+    let player = playerOf(socket);
+    if (player === undefined) return undefined;
     return player.roomID;
 }
 
 function roomOf(socket) {
-    if (roomID(socket) === undefined) return undefined;
+    let roomID = roomIDOf(socket);
+    if (roomID === undefined) return undefined;
     return roomInfos.get(roomID);
 }
 
