@@ -92,7 +92,7 @@ io.sockets.on('connection', function (socket) {
             return;
         }
 
-        switch (operation) {
+        switch (param.operation) {
             case 'add-cards-to-deck':
                 add_cards_to_deck(socket, param);
                 break;
@@ -112,7 +112,7 @@ io.sockets.on('connection', function (socket) {
                 error(socket, 'unknown operation');
                 return;
         }
-        room.turn = param.next;
+        roomOf(socket).turn = param.next;
     });
 
     socket.on('disconnect', function () {
@@ -169,12 +169,8 @@ function add_cards_to_deck(socket, param) {
     room.deck = room.deck.concat(cards);
     shuffle(room.deck);
 
-    io.to(socket.id).emit('s2c_add-cards-to-deck', {});
-    broadcast(socket, 's2c_add-cards-to-deck', {
-        cards: cards,
-        next: param.next,
-        gameInfo: param.gameInfo
-    });
+    io.to(socket.id).emit('s2c_play_response', param);
+    broadcast(socket, 's2c_play_broadcast', param);
 }
 
 function draw(socket, param) {
@@ -183,35 +179,20 @@ function draw(socket, param) {
         error(socket, 'there are no cards on the deck');
         return;
     }
-
-    io.to(socket.id).emit('s2c_draw',
-        {
-            card: card
-        }
-    );
-    broadcast(socket, 's2c_draw', {
-        next: param.next,
-        gameInfo: param.gameInfo
-    });
+    broadcast(socket, 's2c_play_broadcast', param);
+    param.card = card;
+    io.to(socket.id).emit('s2c_play_response', param);
 }
 
 function draw_expose(socket, param) {
-    let card = room.deck.shift();
+    let card = roomOf(socket).deck.shift();
     if (card === undefined) {
         error(socket, 'there are no cards on the deck');
         return;
     }
-
-    io.to(socket.id).emit('s2c_draw-expose',
-        {
-            card: card
-        }
-    );
-    broadcast(socket, 's2c_draw-expose', {
-        card: card,
-        next: param.next,
-        gameInfo: param.gameInfo
-    });
+    param.card = card;
+    io.to(socket.id).emit('s2c_play_response', param);
+    broadcast(socket, 's2c_play_broadcast', param);
 }
 
 function discard_expose(socket, param) {
@@ -229,20 +210,13 @@ function discard_expose(socket, param) {
     }
     player.hand.splice(idx, 1);
 
-    io.to(socket.id).emit(`s2c_discard-expose`, {});
-    broadcast(socket, 's2c_discard-expose', {
-        card: card,
-        next: param.next,
-        gameInfo: param.gameInfo
-    });
+    io.to(socket.id).emit(`s2c_play_response`, param);
+    broadcast(socket, 's2c_play_broadcast', param);
 }
 
 function pass(socket, param) {
-    io.to(socket.id).emit(`s2c_pass`, {});
-    broadcast(socket, 's2c_pass', {
-        next: param.next,
-        gameInfo: param.gameInfl
-    });
+    io.to(socket.id).emit(`s2c_play_response`, param);
+    broadcast(socket, 's2c_play_broadcast', param);
 }
 
 function error(socket, message) {
