@@ -103,6 +103,9 @@ io.sockets.on('connection', function (socket) {
             case 'draw-expose':
                 draw_expose(socket, param);
                 break;
+            case 'draw-and-discard-expose':
+                draw_and_discard_expose(socket, param);
+                break;
             case 'discard-expose':
                 discard_expose(socket, param);
                 break;
@@ -193,6 +196,17 @@ function draw_expose(socket, param) {
         return;
     }
     playerOf(socket).hand.push(card);
+    param.card = card;
+    io.to(socket.id).emit('s2c_play_response', param);
+    broadcast(socket, 's2c_play_broadcast', param);
+}
+
+function draw_and_discard_expose(socket, param) {
+    let card = roomOf(socket).deck.shift();
+    if (card === undefined) {
+        error(socket, 'there are no cards on the deck');
+        return;
+    }
     param.card = card;
     io.to(socket.id).emit('s2c_play_response', param);
     broadcast(socket, 's2c_play_broadcast', param);
