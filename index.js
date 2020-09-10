@@ -3,6 +3,7 @@ const http = require('http').createServer().listen(PORT);
 const io = require('socket.io')(http);
 const {nanoid} = require('nanoid');
 const shuffle = require('shuffle-array');
+const equal = require('fast-deep-equal');
 let waiting = new Map();//key:gameid value:roomID
 let players = new Map();//key:socketid value:player
 let roomInfos = new Map();//key:roomID
@@ -179,6 +180,7 @@ function draw(socket, param) {
         error(socket, 'there are no cards on the deck');
         return;
     }
+    playerOf(socket).hand.push(card);
     broadcast(socket, 's2c_play_broadcast', param);
     param.card = card;
     io.to(socket.id).emit('s2c_play_response', param);
@@ -190,6 +192,7 @@ function draw_expose(socket, param) {
         error(socket, 'there are no cards on the deck');
         return;
     }
+    playerOf(socket).hand.push(card);
     param.card = card;
     io.to(socket.id).emit('s2c_play_response', param);
     broadcast(socket, 's2c_play_broadcast', param);
@@ -202,13 +205,19 @@ function discard_expose(socket, param) {
         return;
     }
 
-    let player = playerOf(socket);
-    let idx = player.hand.indexOf(card);
+    let hand = playerOf(socket).hand;
+    let idx = -1;
+    for (let i = 0; i < hand.length; i++) {
+        if (equal(card, hand[i])) {
+            idx = i;
+            break;
+        }
+    }
     if (idx === -1) {
         error(socket, 'you do not have the card');
         return;
     }
-    player.hand.splice(idx, 1);
+    hand.splice(idx, 1);
 
     io.to(socket.id).emit(`s2c_play_response`, param);
     broadcast(socket, 's2c_play_broadcast', param);
