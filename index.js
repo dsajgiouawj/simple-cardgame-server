@@ -1,6 +1,21 @@
 const PORT = process.env.PORT || 7000;
-const http = require('http').createServer().listen(PORT);
-const io = require('socket.io')(http);
+const express = require('express');
+const http = require('http');
+const app = express();
+const server = http.createServer(app);
+const io = require('socket.io')(server, {
+    handlePreflightRequest: (req, res) => {
+        const headers = {
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Origin": req.headers.origin,
+            "Access-Control-Allow-Credentials": true
+        };
+        res.writeHead(200, headers);
+        res.end();
+    }
+});
+server.listen(PORT);
+
 const {nanoid} = require('nanoid');
 const shuffle = require('shuffle-array');
 const equal = require('fast-deep-equal');
@@ -8,7 +23,7 @@ let waiting = new Map();//key:gameid value:roomID
 let players = new Map();//key:socketid value:player
 let roomInfos = new Map();//key:roomID
 
-io.sockets.on('connection', function (socket) {
+io.on('connection', function (socket) {
 
     //gameID: search among those who specify the same gameID
     //nickname: nickname
@@ -71,7 +86,6 @@ io.sockets.on('connection', function (socket) {
         }
 
         let nickname = playerOf(socket).nickname;
-        //io.to(socket.id).emit('s2c_chat', {});
         broadcast(socket, 's2c_chat', {from: nickname, message: message});
         room.chatHistory.push({from: nickname, message: message});
     });
